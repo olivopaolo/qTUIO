@@ -1,10 +1,11 @@
 /*
-	qTUIO - TUIO Interface for Qt
+    qTUIO - TUIO Interface for Qt
 
-	Original Version by Martin Blankenburg <martin.blankenburg@imis.uni-luebeck.de>
-	Integrated into qTUIO by x29a <0.x29a.0@gmail.com>
+    Original Version by Martin Blankenburg <martin.blankenburg@imis.uni-luebeck.de>
+    Integrated into qTUIO by x29a <0.x29a.0@gmail.com>
+    Some modifications by Paolo Olivo <olivopao@gmail.com>
 
-	This program is free software: you can redistribute it and/or modify
+    This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
@@ -43,18 +44,23 @@
 #define OFFSETY 0
 #endif
 
-QTuio::QTuio(QObject *parent)
-{
-    theMainWindow = qobject_cast<QMainWindow *>(parent);
+QTuio::QTuio(QObject *parent) : id(0) {
+    theWidget = qobject_cast<QWidget *>(parent);
     theView = qobject_cast<QGraphicsView *>(parent);
     if (theView)
         theScene = theView->scene();
     else
         theScene = qobject_cast<QGraphicsScene *>(parent);
+    // Unitary matrix as default 
+    // FIXME: place in calibration screenRect
+    // {width, 0, 0, 0, height, 0, 0, 0, 1}
+    qreal data[] = {1.0, 0, 0, 0, 1.0, 0, 0, 0, 1.0} ; 
+    calibration = new QMatrix3x3(data) ; 
 }
 
 QTuio::~QTuio()
 {
+    delete calibration ;
     if (running) {
         tuioClient->disconnect();
         delete tuioClient;
@@ -63,7 +69,6 @@ QTuio::~QTuio()
         wait();
     }
 }
-
 
 void QTuio::run()
 {
@@ -76,14 +81,7 @@ void QTuio::run()
     qTouchPointMap = new QMap<int, QTouchEvent::TouchPoint>();
 }
 
-
-void QTuio::addTuioObject(TUIO::TuioObject *tobj) {}
-
-void QTuio::updateTuioObject(TUIO::TuioObject *tobj) {}
-
-void QTuio::removeTuioObject(TUIO::TuioObject *tobj) {}
-
-
+/*
 bool QTuio::tuioToQt(TUIO::TuioCursor *tcur, QEvent::Type eventType)
 {
     const QPointF normPos(tcur->getX(), tcur->getY());
@@ -192,7 +190,7 @@ bool QTuio::tuioToQt(TUIO::TuioCursor *tcur, QEvent::Type eventType)
     }
 
     QEvent *touchEvent = new QTouchEvent(eventType, QTouchEvent::TouchScreen, Qt::NoModifier, touchPointStates, qTouchPointMap->values());
-
+*/
 /**********************************************************
  * Old Code doesn't work with QGraphicsView
  * it doesn't send events to the viewport
@@ -208,7 +206,7 @@ bool QTuio::tuioToQt(TUIO::TuioCursor *tcur, QEvent::Type eventType)
 /************************************************
  * New code fixing the issue with QGraphicsViw
 *************************************************/
-
+/*
 	 if (theView && theView->viewport())
         qApp->postEvent(theView->viewport(), touchEvent);
     else if (theScene)
@@ -222,22 +220,175 @@ bool QTuio::tuioToQt(TUIO::TuioCursor *tcur, QEvent::Type eventType)
 
     return true;
 }
+*/
 
+void QTuio::addTuioCursor(TUIO::TuioCursor *tcur) {
+  // qDebug("addTuioCursor") ;
+  QWidget *target ;
+  QPoint screenPos = norm2Screen(QPointF(tcur->getX(), tcur->getY())) ;
+  target = theWidget->childAt((int)screenPos.x() - theWidget->geometry().x(),
+			      (int)screenPos.y() - theWidget->geometry().y()) ;
+  if (target == 0) target = theWidget ;
 
-void QTuio::addTuioCursor(TUIO::TuioCursor *tcur)
-{
-	QTuio::tuioToQt(tcur, QEvent::TouchBegin);
+  QTouchEvent::TouchPoint touchPoint(id++) ;
+  touchPoint.setRect(QRectF()) ;
+  touchPoint.setPressure(1.0) ;
+  touchPoint.setState(Qt::TouchPointPressed) ;
+
+  struct Tuio2Qt qts = {touchPoint, target} ;
+  tuio2Qt.insert(tcur->getSessionID(), qts) ;
+  // Associate the new touchPoint to the correspondent widget
+  QList<long> widgetTouches = widgets.value(target) ;
+  widgetTouches.append(tcur->getSessionID()) ;
+  widgets.insert(target, widgetTouches) ;
+  updateTouch(tcur) ;
 }
 
-void QTuio::updateTuioCursor(TUIO::TuioCursor *tcur)
-{
-	QTuio::tuioToQt(tcur, QEvent::TouchUpdate);
+void QTuio::updateTuioCursor(TUIO::TuioCursor *tcur) {
+  //  qDebug("updateTuioCursor") ;
+  struct Tuio2Qt qts = tuio2Qt.value(tcur->getSessionID()) ;
+  QTouchEvent::TouchPoint &tPoint = qts.tPoint ;
+  if (tPoint.state() != Qt::TouchPointPressed) {
+    if (tcur->getMotionSpeed() > 0) {
+      tPoint.setState(Qt::TouchPointMoved);
+    } else {
+      tPoint.setState(Qt::TouchPointStationary);
+    }
+  }
+  tuio2Qt.insert(tcur->getSessionID(), qts) ;
+  updateTouch(tcur) ;
 }
 
-void QTuio::removeTuioCursor(TUIO::TuioCursor *tcur)
-{
-	QTuio::tuioToQt(tcur, QEvent::TouchEnd);
+void QTuio::removeTuioCursor(TUIO::TuioCursor *tcur) {
+  //  qDebug("removeTuioCursor") ;
+  struct Tuio2Qt qts = tuio2Qt.value(tcur->getSessionID()) ;
+  qts.tPoint.setState(Qt::TouchPointReleased) ;
+  updateTouch(tcur) ;
+  tuio2Qt.insert(tcur->getSessionID(), qts) ;
 }
 
+void QTuio::addTuioObject(TUIO::TuioObject * /*tobj*/) {}
 
-void  QTuio::refresh(TUIO::TuioTime frameTime) {}
+void QTuio::updateTuioObject(TUIO::TuioObject * /*tobj*/) {}
+
+void QTuio::removeTuioObject(TUIO::TuioObject * /*tobj*/) {}
+
+void  QTuio::refresh(TUIO::TuioTime /*frameTime*/)
+{
+  //  qDebug("refresh") ;
+  QList<QWidget *> keys = widgets.keys() ;
+  for (int i = 0; i<keys.size(); ++i) {
+    QWidget *currWidget = keys[i] ;
+    QList<long> touches = widgets.value(currWidget) ;
+    bool touchBegin = true ;
+    bool touchEnd = true ;
+    bool sendEvent = false ;
+    Qt::TouchPointStates tps ;
+    QList<QTouchEvent::TouchPoint> tPts ;
+    
+    QMutableListIterator<long> tIt(touches) ;
+    while (tIt.hasNext()) {
+      long id = tIt.next() ;
+      struct Tuio2Qt qts = tuio2Qt.value(id) ;
+      if (qts.tPoint.state() != Qt::TouchPointPressed)
+	touchBegin = false ;
+      if (qts.tPoint.state() != Qt::TouchPointReleased)
+	touchEnd = false ;
+      if (qts.tPoint.state() != Qt::TouchPointStationary)
+	sendEvent = true ;
+      tps |= qts.tPoint.state() ;
+      tPts.append(qts.tPoint) ;
+
+      if (qts.tPoint.state() == Qt::TouchPointReleased) {
+	tuio2Qt.remove(id) ;
+	tIt.remove() ;
+      } else {
+	qts.tPoint.setState(Qt::TouchPointStationary) ;
+	tuio2Qt.insert(id, qts) ;
+      }
+    }
+    // update the old value associated to this widget
+    widgets.insert(currWidget, touches) ;
+    if (sendEvent) {
+      QEvent::Type eventType ;
+      if (touchBegin)
+	eventType = QEvent::TouchBegin ;
+      else if (touchEnd)
+	eventType = QEvent::TouchEnd ;
+      else
+	eventType = QEvent::TouchUpdate ;
+
+      QEvent *touchEvent = new QTouchEvent(eventType, QTouchEvent::TouchScreen, Qt::NoModifier, tps, tPts);
+      if (theScene)
+	qApp->postEvent(theScene, touchEvent);
+      else if (theView)
+	qApp->postEvent(theView->scene(), touchEvent);
+      else
+	qApp->postEvent(currWidget, touchEvent);
+    }
+  }
+
+  // if a widget has an empty list it can be dropped
+  QList<QWidget *> touchedWidgets = widgets.keys() ;
+  for (int i = 0; i<touchedWidgets.size(); ++i) 
+    if (widgets.value(touchedWidgets[i]).isEmpty())
+      widgets.remove(touchedWidgets[i]) ;
+    
+  // if there is no more touchPoints id can be reset to zero
+  if (widgets.empty()) id = 0 ;
+}
+
+void
+QTuio::updateTouch(TUIO::TuioCursor *tcur) {
+  struct Tuio2Qt qts = tuio2Qt.value(tcur->getSessionID()) ;
+  QTouchEvent::TouchPoint &tPoint = qts.tPoint ;
+
+  // --- Normalized coordinates ---
+  tPoint.setLastNormalizedPos(tPoint.normalizedPos()) ;
+  tPoint.setNormalizedPos(QPointF(tcur->getX(), tcur->getY())) ;
+  
+  // --- Screen coordinates ---
+  // TODO: why it is necessary to pass the screenRect if it is available from QApplication?
+  // The following method modifies the screenPos
+  // tPoint.setScreenRect(screenRect);
+  tPoint.setLastScreenPos(tPoint.screenPos()) ;
+  tPoint.setScreenPos(norm2Screen(tPoint.normalizedPos())) ;
+  
+  // --- Screen coordinates ---
+  tPoint.setLastPos(tPoint.pos()) ;
+  tPoint.setPos(mapWidgetToGlobal(qts.widget, tPoint.screenPos())) ;
+  //  qDebug() << tPoint.normalizedPos() << tPoint.screenPos() << tPoint.pos() ;
+  // --- Start coordinates ---
+  if (tPoint.state() == Qt::TouchPointPressed) {
+    tPoint.setStartNormalizedPos(tPoint.normalizedPos());
+    tPoint.setStartPos(tPoint.pos());
+    tPoint.setStartScreenPos(tPoint.screenPos());
+    tPoint.setStartScenePos(tPoint.scenePos());
+
+    tPoint.setLastNormalizedPos(tPoint.normalizedPos());
+    tPoint.setLastPos(tPoint.pos());
+    tPoint.setLastScreenPos(tPoint.screenPos());
+    tPoint.setLastScenePos(tPoint.scenePos());
+  }
+
+  tuio2Qt.insert(tcur->getSessionID(), qts) ;
+}
+
+QPoint 
+QTuio::norm2Screen(const QPointF &norm) const {
+  qreal pos[] = { norm.x(), norm.y(), 1 } ;
+  QGenericMatrix<1,3,qreal> posMat (pos) ;
+  QGenericMatrix<1,3,qreal> result = (*calibration) * posMat ;
+  return QPoint(result.constData()[0] * screenRect.width(), result.constData()[1] * screenRect.height()) ;
+}
+
+QPointF
+QTuio::mapWidgetToGlobal(QWidget *widget, const QPointF &pos) const {
+  //  qDebug() << widget << pos ;
+  QPointF upLevel(pos.x() - widget->geometry().x(),
+		  pos.y() - widget->geometry().y());
+  if (widget->parentWidget())
+    return mapWidgetToGlobal(widget->parentWidget(), upLevel) ;
+  else
+    return upLevel ;
+}
