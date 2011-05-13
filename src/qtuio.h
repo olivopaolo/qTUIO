@@ -3,7 +3,7 @@
 
     Original Version by Martin Blankenburg <martin.blankenburg@imis.uni-luebeck.de>
     Integrated into qTUIO by x29a <0.x29a.0@gmail.com>
-    Some modifications by Paolo Olivo <olivopao@gmail.com>
+    Some modifications by Paolo Olivo <olivopaolo@tiscali.it>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -47,7 +47,7 @@ public:
     ~QTuio();
 
     void run();
-
+    void setTuioCalibration(QMatrix3x3 &calibration) ;
     virtual void addTuioObject(TUIO::TuioObject *tobj);
     virtual void updateTuioObject(TUIO::TuioObject *tobj);
     virtual void removeTuioObject(TUIO::TuioObject *tobj);
@@ -68,18 +68,18 @@ private:
     QWidget *theWidget;
     /** Calibration matrix to convert TUIO [0,1] coordinates to screen
 	coordinates. */
-    QMatrix3x3 *calibration;
-    QRect screenRect;
+    QMatrix3x3 calibration;
     TUIO::TuioClient *tuioClient;
     QMap<int, QTouchEvent::TouchPoint> *qTouchPointMap;
     QMap<long, Tuio2Qt> tuio2Qt ;
     QMap<QWidget *, QList<long> > widgets ;
+
     bool tuioToQt(TUIO::TuioCursor *tcur, QEvent::Type eventType);
     /** Update the TouchPoint correspondent to the argument
       TuioCursor.  This methos exclusively updates the position
       variables. */
     void updateTouch(TUIO::TuioCursor *tcur) ;
-    QPoint norm2Screen(const QPointF &norm) const ;
+    QPoint tuioToScreen(const QPointF &norm) const ;
     QPointF mapWidgetToGlobal(QWidget *widget, const QPointF &pos) const ;
 } ;
 

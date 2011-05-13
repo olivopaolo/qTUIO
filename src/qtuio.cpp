@@ -3,7 +3,7 @@
 
     Original Version by Martin Blankenburg <martin.blankenburg@imis.uni-luebeck.de>
     Integrated into qTUIO by x29a <0.x29a.0@gmail.com>
-    Some modifications by Paolo Olivo <olivopao@gmail.com>
+    Some modifications by Paolo Olivo <olivopaolo@tiscali.it>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -51,16 +51,15 @@ QTuio::QTuio(QObject *parent) : id(0) {
         theScene = theView->scene();
     else
         theScene = qobject_cast<QGraphicsScene *>(parent);
-    // Unitary matrix as default 
-    // FIXME: place in calibration screenRect
-    // {width, 0, 0, 0, height, 0, 0, 0, 1}
-    qreal data[] = {1.0, 0, 0, 0, 1.0, 0, 0, 0, 1.0} ; 
-    calibration = new QMatrix3x3(data) ; 
+    // Default calibration has screen size
+    QRect screen = QApplication::desktop()->rect();
+    qreal data[] = { screen.width(), 0, 0, 
+                     0, screen.height(), 0, 
+                     0, 0, 1.0 } ; 
+    calibration = QMatrix3x3(data) ; 
 }
 
-QTuio::~QTuio()
-{
-    delete calibration ;
+QTuio::~QTuio() {
     if (running) {
         tuioClient->disconnect();
         delete tuioClient;
@@ -70,15 +69,18 @@ QTuio::~QTuio()
     }
 }
 
-void QTuio::run()
-{
+void 
+QTuio::run() {
     running = true;
-    screenRect = QApplication::desktop()->rect();
-//    tuioClient = new TUIO::TuioClient::TuioClient(3333);
     tuioClient = new TUIO::TuioClient(3333);
     tuioClient->addTuioListener(this);
     tuioClient->connect();
     qTouchPointMap = new QMap<int, QTouchEvent::TouchPoint>();
+}
+
+void 
+QTuio::setTuioCalibration(QMatrix3x3 &calibration) {
+  this->calibration = calibration ;
 }
 
 /*
@@ -225,7 +227,7 @@ bool QTuio::tuioToQt(TUIO::TuioCursor *tcur, QEvent::Type eventType)
 void QTuio::addTuioCursor(TUIO::TuioCursor *tcur) {
   // qDebug("addTuioCursor") ;
   QWidget *target ;
-  QPoint screenPos = norm2Screen(QPointF(tcur->getX(), tcur->getY())) ;
+  QPoint screenPos = tuioToScreen(QPointF(tcur->getX(), tcur->getY())) ;
   target = theWidget->childAt((int)screenPos.x() - theWidget->geometry().x(),
 			      (int)screenPos.y() - theWidget->geometry().y()) ;
   if (target == 0) target = theWidget ;
@@ -245,7 +247,7 @@ void QTuio::addTuioCursor(TUIO::TuioCursor *tcur) {
 }
 
 void QTuio::updateTuioCursor(TUIO::TuioCursor *tcur) {
-  //  qDebug("updateTuioCursor") ;
+  // qDebug("updateTuioCursor") ;
   struct Tuio2Qt qts = tuio2Qt.value(tcur->getSessionID()) ;
   QTouchEvent::TouchPoint &tPoint = qts.tPoint ;
   if (tPoint.state() != Qt::TouchPointPressed) {
@@ -260,7 +262,7 @@ void QTuio::updateTuioCursor(TUIO::TuioCursor *tcur) {
 }
 
 void QTuio::removeTuioCursor(TUIO::TuioCursor *tcur) {
-  //  qDebug("removeTuioCursor") ;
+  // qDebug("removeTuioCursor") ;
   struct Tuio2Qt qts = tuio2Qt.value(tcur->getSessionID()) ;
   qts.tPoint.setState(Qt::TouchPointReleased) ;
   updateTouch(tcur) ;
@@ -273,8 +275,7 @@ void QTuio::updateTuioObject(TUIO::TuioObject * /*tobj*/) {}
 
 void QTuio::removeTuioObject(TUIO::TuioObject * /*tobj*/) {}
 
-void  QTuio::refresh(TUIO::TuioTime /*frameTime*/)
-{
+void  QTuio::refresh(TUIO::TuioTime /*frameTime*/) {
   //  qDebug("refresh") ;
   QList<QWidget *> keys = widgets.keys() ;
   for (int i = 0; i<keys.size(); ++i) {
@@ -352,7 +353,7 @@ QTuio::updateTouch(TUIO::TuioCursor *tcur) {
   // The following method modifies the screenPos
   // tPoint.setScreenRect(screenRect);
   tPoint.setLastScreenPos(tPoint.screenPos()) ;
-  tPoint.setScreenPos(norm2Screen(tPoint.normalizedPos())) ;
+  tPoint.setScreenPos(tuioToScreen(tPoint.normalizedPos())) ;
   
   // --- Screen coordinates ---
   tPoint.setLastPos(tPoint.pos()) ;
@@ -375,11 +376,12 @@ QTuio::updateTouch(TUIO::TuioCursor *tcur) {
 }
 
 QPoint 
-QTuio::norm2Screen(const QPointF &norm) const {
-  qreal pos[] = { norm.x(), norm.y(), 1 } ;
-  QGenericMatrix<1,3,qreal> posMat (pos) ;
-  QGenericMatrix<1,3,qreal> result = (*calibration) * posMat ;
-  return QPoint(result.constData()[0] * screenRect.width(), result.constData()[1] * screenRect.height()) ;
+QTuio::tuioToScreen(const QPointF &normalized) const {
+  qreal pos[] = { normalized.x(), 
+		  normalized.y(), 
+		  1 } ;
+  QGenericMatrix<1,3,qreal> result = calibration * QGenericMatrix<1,3,qreal>(pos) ;
+  return QPoint(result.data()[0], result.data()[1]) ;
 }
 
 QPointF

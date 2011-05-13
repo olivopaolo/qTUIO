@@ -37,8 +37,10 @@ include( 3rdparty.pri )
 
 # Main project files
 HEADERS += qtuio_dll.h \
-    qtuio.h
-SOURCES += qtuio.cpp
+    qtuio.h \
+    Overlay.h
+SOURCES += qtuio.cpp \
+    Overlay.cpp
 
 # Resources
 RESOURCES += 

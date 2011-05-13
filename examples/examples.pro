@@ -1,3 +1,3 @@
 TEMPLATE = subdirs
 
-SUBDIRS = dials fingerpaint knobs pinchzoom pong
+SUBDIRS = dials fingerpaint knobs pinchzoom pong onwidgets

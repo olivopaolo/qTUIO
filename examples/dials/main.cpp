@@ -39,31 +39,46 @@
  **
  ****************************************************************************/
 
- #include <QApplication>
- #include <QWidget>
- #include <QDial>
+#include <QApplication>
+#include <QWidget>
+#include <QDial>
 
- #include "ui_dials.h"
+#include "ui_dials.h"
 #include "qtuio.h"
 
- int main(int argc, char **argv)
- {
-     QApplication app(argc, argv);
-
-
-
-     QWidget window;
-     Ui::Dials dialsUi;
-     dialsUi.setupUi(&window);
-
-
-
-     QList<QAbstractSlider *> sliders = window.findChildren<QAbstractSlider *>();
-     foreach (QAbstractSlider *slider, sliders)
-         slider->setAttribute(Qt::WA_AcceptTouchEvents);
-
-     QTuio qTUIO(&window);
-          qTUIO.run();
-     window.showMaximized();
-     return app.exec();
- }
+int main(int argc, char **argv) {
+  QApplication app(argc, argv) ;
+  QWidget window ;
+  Ui::Dials dialsUi; 
+  dialsUi.setupUi(&window) ;
+  window.showMaximized() ;
+  QList<QAbstractSlider *> sliders = window.findChildren<QAbstractSlider *>() ;
+  foreach (QAbstractSlider *slider, sliders)
+    slider->setAttribute(Qt::WA_AcceptTouchEvents) ;
+  // --- Add qTUIO ---
+  QTuio qTUIO(&window) ;
+  QStringList args = app.arguments() ;
+  if (args.size() > 1) {
+    if (args[1] == "-h" || args[1] == "--help") {
+      printf("Usage: %s [OPTION]\n\n", args[0].toLocal8Bit().data()) ;
+      printf("Mandatory arguments to long options are mandatory for short options too.\n") ;
+      printf("  -c, --calib MATRIX   specificy a 3x3 calibration matrix to fit [0,1] TUIO coordinates to screen coordinates\n") ;
+      printf("  -h, --help           display this help and exit\n") ;
+      exit(0) ;
+    } else if (args[1] == "-c" || args[1] == "--calib") {
+      if (args.size() < 11) {
+	printf("Error! Calibration matrix requires 9 values.\n") ;
+	exit(-1) ;
+      } else {
+	QMatrix3x3 calibration ;
+	qreal *data = calibration.data() ;
+	for (int i = 0; i < 9; ++i)
+	  data[i] = args[i+2].toDouble() ;
+	qTUIO.setTuioCalibration(calibration) ;
+      }
+    }
+  }
+  qTUIO.run();
+  // ---
+  return app.exec();
+}
