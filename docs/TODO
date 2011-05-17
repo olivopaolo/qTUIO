@@ -1,0 +1,16 @@
+
+ - Uniform command line arguments to all examples so they have:
+    - calibration
+    - overlay
+    - help
+
+ - Add Tuio modality: 
+    - ON_WIDGET : TUIO coordinates are fitted on the target widget 
+    - ON_SCREEN : TUIO coordinates are fitted on the screen using a calibration matrix
+
+ - Add compatibility with QGraphicScene & QGraphicView
+ 
+ - Check on widgets on QDesktopWidget *widget = QApplication::desktop() ;
+
+ - Make a multitouch keyboard.
+ 

@@ -320,12 +320,12 @@ void  QTuio::refresh(TUIO::TuioTime /*frameTime*/) {
 	eventType = QEvent::TouchUpdate ;
 
       QEvent *touchEvent = new QTouchEvent(eventType, QTouchEvent::TouchScreen, Qt::NoModifier, tps, tPts);
-      if (theScene)
-	qApp->postEvent(theScene, touchEvent);
-      else if (theView)
-	qApp->postEvent(theView->scene(), touchEvent);
+      if (theView && theView->viewport())
+        qApp->postEvent(theView->viewport(), touchEvent);
+      else if (theScene)
+        qApp->postEvent(theScene, touchEvent);
       else
-	qApp->postEvent(currWidget, touchEvent);
+        qApp->postEvent(currWidget, touchEvent);
     }
   }
 
